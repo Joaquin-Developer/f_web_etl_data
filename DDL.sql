@@ -4,7 +4,8 @@ USE tour_dates;
 
 CREATE TABLE IF NOT EXISTS countries (
     country_id INT AUTO_INCREMENT PRIMARY KEY,
-    country_name varchar(100) not null
+    country_name varchar(100) not null,
+    country_short_name varchar(2) not null
 );
 
 

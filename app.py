@@ -58,7 +58,7 @@ class ETLModel:
 
 class Countries(ETLModel):
     @classmethod
-    def get_data(cls):
+    def run(cls, only_return_data=False):
         access_token = cls.get_access_token()
         url = f"{cls.API_URL}/countries/"
 
@@ -66,11 +66,15 @@ class Countries(ETLModel):
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/json"
         })
-        return response.json()
+
+        data = response.json()
+
+        if only_return_data:
+            return data
+        cls.insert_data(data)
 
     @classmethod
-    def get_sql_insert(cls) -> str:
-        data: List[Dict[str, str]] = cls.get_data()
+    def insert_data(cls, data: List[Dict[str, str]]) -> str:
         sql = "INSERT INTO countries(country_name, country_short_name) VALUES "
 
         for country in data:
@@ -86,7 +90,9 @@ class Countries(ETLModel):
 
 class States(ETLModel):
     @classmethod
-    def get_data(cls, countries: List[str]):
+    def run(cls):
+        countries: List[str] = [country["country_name"] for country in Countries.run(True)]
+
         base_url = f"{cls.API_URL}/states/"
 
         for country in countries:
@@ -99,12 +105,12 @@ class States(ETLModel):
                 print("Procesando", country)
                 data = response.json()
                 states = [state["state_name"] for state in data]
-                cls.generate_sql(states, country)
+                cls.insert_data(states, country)
             except:
                 print(f"Fallo para {country}")
 
     @classmethod
-    def generate_sql(cls, data: List[str], country: str):
+    def insert_data(cls, data: List[str], country: str):
         for state_name in data:
             sql = "INSERT INTO states(state_name, country_id) \n"
             sql += f"VALUES ('{state_name}', (SELECT country_id FROM countries WHERE country_name = '{country}'))"
@@ -114,29 +120,50 @@ class States(ETLModel):
             except Exception as error:
                 print(error)
 
-    @classmethod
-    def get_sql_insert(cls) -> str:
-        data: List[Dict[str, str]] = cls.get_data()
-        sql = "INSERT INTO countries(country_name, country_short_name) VALUES "
-
-        for country in data:
-            c_name = country["country_name"].replace("'", " ")
-            c_short_name = country["country_short_name"]
-
-            sql += f"""('{c_name}', '{c_short_name}'), """
-
-        sql = sql[:-2]
-
-        print(sql)
-
 
 class Cities(ETLModel):
-    ...
+    @classmethod
+    def get_all_registred_states(cls) -> List[str]:
+        data = cls.execute_query("SELECT DISTINCT state_name FROM states", True)
+        return [state["state_name"] for state in data]
 
+    @classmethod
+    def run(cls):
+        states = cls.get_all_registred_states()
+
+        base_url = f"{cls.API_URL}/cities/"
+
+        for state in states:
+            try:
+                url = base_url + state
+                response = requests.get(url, headers={
+                    "Authorization": f"Bearer {cls.get_access_token()}",
+                    "Accept": "application/json"
+                })
+                print("Procesando", state)
+                data = response.json()
+                cities = [city["city_name"] for city in data]
+                print(cities)
+                cls.insert_data(cities, state)
+            except:
+                print(f"Fallo para {state}")
+
+    @classmethod
+    def insert_data(cls, data: List[str], state: str):
+        x = 0
+        for city_name in data:
+            sql = "INSERT INTO cities(city_name, state_id) \n"
+            sql += f"VALUES ('{city_name}', (SELECT state_id FROM states WHERE state_name = '{state}'))"
+            print(sql)
+            try:
+                cls.execute_query(sql)
+            except Exception as error:
+                print(error)
 
 def main():
-    countries = [country["country_name"] for country in Countries.get_data()]
-    States.get_data(countries)
+    # countries = [country["country_name"] for country in Countries.get_data()]
+    # States.get_data(countries)
+    Cities.run()
 
 
 if __name__ == "__main__":
